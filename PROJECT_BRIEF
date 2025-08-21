@@ -1,0 +1,373 @@
+# THE PROJECT BRIEF #
+
+# Project Name #
+AI‑Powered Legal Document Analysis & Contract Negotiation 
+
+# Product Description / Presentation #
+
+AI‑Powered Legal Document Analysis & Contract Negotiation — Build Brief
+Project Codename: ClauseGuard AI
+Product description / presentation
+ClauseGuard AI accelerates legal review and negotiation by extracting clauses, scoring risk, proposing redlines, and maintaining an audit‑ready trail of every change. It ingests contracts (NDA, MSA, DPA, SOW, SaaS Terms), maps them to your playbooks and fallback positions, drafts counter‑proposals, simulates counterparty responses, and supports live, collaborative negotiations with citations to policy and precedent. Optional blockchain anchoring provides tamper‑evident proof of document integrity at key milestones.
+What it does:
+•	Parses DOCX/PDF scans (OCR) into a canonical, structured DocJSON with sections/clauses/definitions/schedules.
+•	Detects clause types and obligations, aligns to your playbook tiers (preferred → acceptable → fallback).
+•	Calculates risk scores (jurisdictional, regulatory, data, liability) and flags redlines required to reach policy.
+•	Generates suggested edits/redlines with plain‑English rationales and citations to prior negotiated language.
+•	Runs a negotiation simulator (what‑if) to preview counterparty pushback across common patterns.
+•	Supports multi‑user live sessions with presence, comments, tasks, and approval gates.
+•	Anchors versions on a public chain (optional) by hashing content and storing the hash to create evidentiary trails.
+
+Key features:
+•	RAG‑grounded analysis over your clause library, policies, precedent contracts, and regulations.
+•	Redline editor with side‑by‑side diff, clause browser, and citation sidebar.
+•	Policy engine with jurisdiction packs (e.g., US, EU, UK) and configurable fallback ladders.
+•	E‑signature and CLM hand‑off, export back to Word/PDF with tracked changes.
+•	End‑to‑end audit trail (who/what/when/why) and immutable anchors (optional).
+
+Why legal teams love it:
+•	Cuts first‑pass review time from hours to minutes while increasing consistency.
+•	Makes risk transparent with explainable rationales and links to precedent.
+•	Fits existing CLM/e‑sign flows; optional blockchain proof without exposing contents.
+Framework (and why)
+LangGraph (orchestration) + LangChain (tools) + RAG (mandatory) with OpenAI + Claude. LangGraph provides deterministic, resumable, human‑in‑the‑loop negotiation flows with approval gates; LangChain standardizes retrievers, tools, and tracing; RAG grounds extractions and redlines in your policies and precedent. CrewAI can be used during prototyping for role ideation, but production orchestration stays in LangGraph for reliability.
+1. BACKEND ARCHITECTURE (extensive)
+Core services (FastAPI • async SQLAlchemy 2.0 • Pydantic v2):
+•	Auth & Tenant: JWT (access/refresh), RBAC (admin/counsel/reviewer/guest), optional SSO (OIDC/SAML), SCIM.
+•	Document Ingest: OCR for scans, DOCX/PDF parsers → canonical DocJSON; versioning; virus scan.
+•	Clause Extraction: NER + pattern rules to detect clause type (indemnity, liability cap, governing law, DPA, SLA, IP).
+•	Evidence/RAG Service: corpus ingestion (policies, playbooks, clause library, precedent contracts, public regs), chunking, embeddings (pgvector), citation resolver.
+•	Negotiation Orchestrator (LangGraph): Ingest → Classify → Retrieve → Assess Risk → Propose Redlines → Simulate → HIL Gate → Finalize.
+•	Policy Engine: jurisdiction packs, thresholds (cap %, survival days), fallback ladders, forbidden phrases.
+•	Collaboration: WebSockets sessions, comments, tasks, presence, approvals with audit trail.
+•	Export & CLM: tracked‑changes DOCX/PDF, CLM hand‑off (webhooks), e‑signature hand‑off.
+•	Anchoring (optional): compute content hash (Merkle root) and anchor to public chain via RPC; store tx metadata only.
+Data model (PostgreSQL + pgvector):
+•	tenants, users, roles, api_keys, oauth_connections
+•	documents(id, tenant_id, title, type, status), doc_versions(id, document_id, hash, created_at, author_id)
+•	sections, clauses, definitions, schedules (linked to doc_version with offsets)
+•	extractions(id, doc_version_id, clause_type, entities jsonb, confidence)
+•	playbooks(id, jurisdiction, rules jsonb), clause_library(id, title, text, tags)
+•	recommendations(id, doc_version_id, risk_score, rationale, citations jsonb, proposals jsonb)
+•	negotiations(id, document_id, state, participants jsonb), redlines(id, negotiation_id, diff jsonb)
+•	anchors(id, doc_version_id, chain, tx_hash, anchor_hash, anchored_at)
+•	audit_logs(id, actor_id, action, target_type, target_id, before/after jsonb, ts)
+•	evidence_sources(id, url|file, snapshot_uri, license, as_of, locale), evidence_chunks(id, source_id, text, vector, offsets)
+
+Pipelines:
+•	Ingestion: file → normalize to DocJSON → segment → embed → classify clauses.
+•	Retrieval: prioritize tenant policies/playbooks > clause_library > precedent > public regs; apply recency and credibility.
+•	Assessment: compute risk score per clause; detect missing/forbidden/overexposed terms; suggest edits.
+•	Proposals: generate redlines + rationale; assemble citations; require HIL approval for high‑risk.
+•	Simulation: generate likely counterparty responses across presets (vendor‑friendly/buyer‑friendly/neutral).
+
+Connectors:
+•	E‑sign (DocuSign/Adobe Sign), CLM (e.g., Ironclad/Agiloft) via webhooks/APIs.
+•	Storage (S3/GCS) with signed URLs and lifecycle policies.
+•	Blockchain RPC (e.g., Ethereum/Polygon via a provider) for optional anchoring; store only hashes/tx metadata.
+•	Email (Postmark/SendGrid), Calendar (optional) for negotiation sessions.
+Runtime & jobs: Redis for caching/queues; WebSockets for live sessions; idempotent workers for ingestion and anchoring.
+
+2. FRONTEND ARCHITECTURE
+•	Next.js 14 (App Router), React 18, TypeScript, Tailwind, shadcn/ui.
+•	State/data: React Query for server cache; lightweight Zustand/Context for UI state.
+•	Editors: side‑by‑side diff viewer with tracked changes; clause browser; citation sidebar; policy panel.
+•	Real‑time: WebSocket presence, comments, tasks, approvals; optimistic UI for minor edits.
+•	Routing: /documents/:id, /negotiations/:id, /library, /policies; i18n for jurisdictional text.
+•	Accessibility: WCAG 2.1 AA; keyboard‑first; clear focus states; printable views.
+
+3. DESIGN REQUIREMENTS (UI/UX design based on product & industry)
+•	Trust‑first legal UI: calm neutrals, dense yet legible tables, monospace for diffs, color‑coded redlines.
+•	Risk communication: clause risk badges, policy conformance meter, jurisdiction chips.
+•	Explainability: expandable rationale with citations to policy/precedent; timestamped sources.
+•	Safety affordances: explicit confirmation on high‑risk edits; legal‑advice disclaimer banners.
+•	Dark/light modes; print‑perfect exports; high‑contrast option for review marathons.
+
+4. CORE INTEGRATIONS
+•	OpenAI + Claude via LangChain (tool calling, structured outputs).
+•	OCR provider for scanned PDFs; DOCX/PDF parsing pipeline.
+•	CLM and e‑signature connectors; cloud storage for artifacts.
+•	SSO (OIDC/SAML) + SCIM; email notifications; optional calendar.
+•	Blockchain anchoring provider (public chain RPC) for hash anchoring (no document contents on chain).
+
+5. DELIVERABLES REQUIRED
+•	Next.js 14 frontend with negotiation UI (diff, citations, approvals).
+•	FastAPI backend with LangGraph orchestration, RAG, policy engine, and collaboration.
+•	PostgreSQL schema + pgvector; migrations; seed scripts (sample NDAs/MSAs/DPAs).
+•	Ingestion pipeline (OCR + parsers) producing DocJSON; vector index builder.
+•	WebSockets for live negotiation; audit logging; RBAC/SSO.
+•	Optional anchoring microservice with RPC provider integration.
+•	CLM/e‑sign integration stubs; export to DOCX/PDF with tracked changes.
+•	Deployment configs (Vercel/Render), environment templates, and OpenAPI docs.
+•	Comprehensive documentation and sample runbooks.
+
+6. SUCCESS CRITERIA
+•	E2E demo on sample contracts: ingest → analyze → propose redlines → HIL approve → export → (optional) anchor.
+•	All redlines carry rationales and citations; high‑risk steps require approval.
+•	Immutable audit trail across edits with user/time/reason; reproducible versions.
+•	Zero leakage of document contents to anchoring layer (hash‑only).
+
+7. IMPLEMENTATION GUIDELINES
+•	Strong typing (Pydantic v2 + TypeScript); canonical DocJSON schema for contracts, clauses, and proposals.
+•	No confidential text in logs/traces/prompts; use content hashing and redaction where needed.
+•	Deterministic LangGraph nodes; checkpoint at each approval gate; idempotent retries.
+•	Block finalize if any asserted factual/legal reference lacks a citation or policy basis.
+•	Keep calculators/tooling pure and tested (caps %, survival, interest, SLA credits).
+•	Ship a claude.md describing tools, schemas, and safe‑actions.
+
+8. SECURITY & COMPLIANCE
+•	Data protection: encryption in transit and at rest; customer‑managed keys (optional); secret management (KMS/Vault).
+•	Privacy & locality: GDPR/CCPA; data residency by tenant; retention & legal holds.
+•	Access: least‑privilege RBAC; four‑eyes approval for high‑risk actions; full audit logs (immutable).
+•	E‑sign legal: ESIGN/UETA/eIDAS alignment; timestamped event trail.
+•	Blockchain: store only hashes and metadata; avoid personal data on chain; handle chain reorgs and provider outages.
+•	AppSec: OWASP ASVS, input validation, rate limiting, AV scanning on uploads; supply‑chain and dependency pinning.
+
+Claude — 5 critical prompts (tailored, prebuilt‑architecture aware)
+
+PROMPT 1 — PROJECT SETUP & ARCHITECTURE
+You are extending a monorepo with a prebuilt architecture. Confirm the folder layout and wire the legal modules. Frontend: Next.js 14 (TypeScript, Tailwind, shadcn/ui, React Query). Backend: FastAPI (async SQLAlchemy 2.0, Pydantic v2, JWT, RBAC). Data: PostgreSQL + pgvector, Redis. Add the LangGraph skeleton (Ingest → Classify → Retrieve → Assess Risk → Propose Redlines → Simulate → HIL → Finalize). Provide env templates and Vercel/Render configs without overwriting existing ones.
+
+PROMPT 2 — CORE BACKEND IMPLEMENTATION
+Within the existing FastAPI app, implement endpoints and services for: file ingestion (DOCX/PDF+OCR) → DocJSON, clause extraction, RAG retrieval with citations over policies/playbooks/precedent, risk scoring, proposal generation (structured JSON with diffs), negotiation state machine with WebSocket updates, and optional blockchain anchoring (hash‑only). Extend Pydantic/SQLAlchemy models rather than replacing them; include idempotent workers and audit logging.
+
+PROMPT 3 — FRONTEND COMPONENTS & UI
+Extend the prebuilt Next.js UI with: Document Viewer (side‑by‑side diff + tracked changes), Clause Browser, Policy Panel, Citations Sidebar, Risk badges, Approvals workflow, and Export (DOCX/PDF). Implement presence, comments, and tasks via WebSockets. Maintain WCAG 2.1 AA semantics and keep styles consistent with existing design tokens.
+
+PROMPT 4 — AI INTEGRATION & FEATURES
+Integrate OpenAI + Claude via LangChain tools for extraction, classification, rationale generation, and redline drafting. Ensure structured outputs: {clauses[], issues[], proposals[], citations[], rationale, risk_score}. Always cite sources (policy/precedent) and block finalize if missing. Add a negotiation simulator that generates likely counterparty responses across vendor/buyer/neutral presets. Respect safe‑actions and approval gates.
+
+PROMPT 5 — DEPLOYMENT & E2E DEMO
+Provision DB and Redis, run migrations, and seed with sample NDAs/MSAs/DPAs and a policy/playbook set. Demonstrate an end‑to‑end flow: upload → analyze → propose → approve → export → (optional) anchor to testnet. Output OpenAPI docs and sample cURL/HTTPie commands for each step while preserving the prebuilt configs.
+
+Disclaimer: Outputs are for informational purposes only and do not constitute legal advice. A qualified attorney must review and approve before execution.
+
+
+FOLLOW THIS 8 STEP PLAN TO PREPARE THE INFRASTRUCTURE
+-----------------------------------------------------
+
+# 🚀 Claude Fullstack Repo Prep – Optimized 8 Step Plan
+
+  
+The goal: build an extensive frontend + backend scaffold so Claude Code only has to finish ~20% of the work.  
+Each step must be **completed and reviewed** before advancing.
+IMPORTANT: the checklist in each step has be checked off 100% before moving to the next step
+
+---
+
+## STEP 1 — Build the Rich Infrastructure
+Create a **deep scaffold** for both frontend and backend so Claude code can recognize the architecture immediately.
+
+- Build a **frontend app shell** with routing, placeholder pages, components, and styling setup.  
+- Build a **backend app shell** with API structure, health endpoint, and config in place.  
+- Include `REPO_MAP.md`, `API_SPEC.md`, and a draft `CLAUDE.md` in the `docs/` folder.  (create the docs folder if it does not exist)
+- Add **TODO markers and folder-level `_INSTRUCTIONS.md`** files so Claude knows exactly where to add logic.
+
+**Deliverables**
+- Frontend app shell with routing, placeholder pages, components, and styling setup  
+- Backend app shell with API structure, health endpoint, and config  
+- `docs/REPO_MAP.md`, `docs/API_SPEC.md` (stub), and draft `docs/CLAUDE.md`  
+- TODO markers + folder-level `_INSTRUCTIONS.md` files  
+
+**Checklist**
+- [ ] Frontend scaffold compiles (`npm run dev`)  
+- [ ] Backend boots (`uvicorn backend.app.main:app --reload`)  
+- [ ] Docs folder created with drafts (`REPO_MAP.md`, `API_SPEC.md`, `CLAUDE.md`)  
+- [ ] TODO markers and `_INSTRUCTIONS.md` stubs in place  
+
+---
+
+## STEP 2 — Enrich the Scaffold
+If the repo looks shallow, enrich it so Claude needs fewer leaps of imagination.  
+
+Add:
+- Sample frontend routes and components (`/`, `/about`, `/dashboard`)  
+- Domain model stubs and types/interfaces  
+- Mock data + fixtures for UI flows  
+- README files with quick run instructions for both frontend and backend  
+- Instructions embedded in folders (e.g. `CLAUDE_TASK: …`)
+
+**Deliverables**
+- Sample routes and pages (`/`, `/about`, `/dashboard`)  
+- Domain model stubs and type definitions  
+- Mock data and fixtures for UI flows  
+- README files for frontend and backend with run instructions  
+- Folder-level instructions (`_INSTRUCTIONS.md`)  
+
+**Checklist**
+- [ ] At least 2–3 sample routes/pages exist  
+- [ ] Domain types/interfaces stubbed out  
+- [ ] Mock data + fixtures included  
+- [ ] README_FRONTEND.md and README_BACKEND.md added  
+- [ ] Each folder has `_INSTRUCTIONS.md` where relevant 
+
+---
+
+## STEP 3 — Audit for Alignment
+Check that the scaffold actually matches the product brief, tech specs, and UX goals.
+Add additional UI/UX elements (if needed) to make the application visually appealing (and update the design requirements after that)
+
+- Do navigation and pages reflect the product’s main flows?  
+- Do API endpoints match the UI needs?  
+- Is the chosen tech stack consistent (no unused or conflicting libraries)?  
+- Is the UX direction reflected (design tokens, layout, component stubs)?
+
+**Deliverables**
+- Alignment review across Product ↔ UI/UX ↔ Tech  
+- Identify any missing flows, mismatched libraries, or conflicting instructions  
+
+**Checklist**
+- [ ] Navigation structure matches product journeys  
+- [ ] Components/pages map to required features  
+- [ ] API endpoints cover MVP needs  
+- [ ] No contradictory or unused technologies  
+
+---
+
+## STEP 4 — Document the Architecture
+Now make the docs **Claude-ready**:
+
+- **REPO_MAP.md**: Full repo breakdown with roles of each folder  
+- **API_SPEC.md**: Endpoints, payloads, error handling  
+- **CLAUDE.md**: Editing rules, coding conventions, AI collaboration guidelines  
+
+These three files are the **context backbone** Claude will use to understand the repo.
+
+**Deliverables**
+- `REPO_MAP.md`: full repo breakdown with folder purposes  
+- `API_SPEC.md`: endpoints, models, error conventions  
+- `CLAUDE.md`: collaboration rules, editing boundaries  
+
+**Checklist**
+- [ ] REPO_MAP.md fully describes structure  
+- [ ] API_SPEC.md covers all MVP endpoints and schemas  
+- [ ] CLAUDE.md includes project overview, editing rules, examples  
+
+---
+
+## STEP 5 — Improve the Prompt
+Enhance the prompt (in `docs/PROMPT_DECLARATION.md`) with details Claude needs:
+
+- FE/BE boundaries and data contracts  
+- UX guidelines (states, accessibility, interaction patterns)  
+- Performance budgets (bundle size, API latency)  
+- Security constraints (auth, rate limits, PII handling)  
+- Testing expectations (unit, integration, end-to-end)
+
+**Deliverables**
+- FE/BE boundaries and contracts  
+- UX guidelines (states, accessibility, patterns)  
+- Performance budgets (bundle size, latency targets)  
+- Security constraints (auth, PII, rate limits)  
+- Testing expectations  
+
+**Checklist**
+- [ ] Prompt includes FE/BE division of responsibility  
+- [ ] UX principles and design tokens specified  
+- [ ] Performance/security/testing requirements added  
+- [ ] Prompt is concrete and actionable for Claude  
+
+---
+
+## STEP 6 — Expert Audit of the Prompt
+Now do a **meticulous audit** of the one-page prompt declaration.
+
+- Add Frontend Architecture, Backend Architecture, Design requirements, Core Integrations, Success Criteria, Implementation Guidelines and Security & Compliance categories from this Project Brief to the prompt declaration.
+- Remove inconsistencies, duplicates, or unused technologies  
+- Ensure Tech Stack → Product → Scaffold alignment (no mismatches)  
+- Add UI/UX details that make the product visually appealing and usable  
+- Double-check frontend and backend folders are ready  
+- Confirm editing boundaries are clear (what Claude can/can’t touch)  
+- Make the declaration **battle-tested and handoff-ready**
+
+**Deliverables**
+- Remove inconsistencies/duplicates  
+- Ensure stack ↔ product ↔ scaffold alignment  
+- Add UI/UX and accessibility details  
+- Clarify file boundaries (editable vs do-not-touch)  
+- Confirm prompt uses Claude-friendly syntax  
+
+**Checklist**
+- [ ] No unused or contradictory tech remains  
+- [ ] UI/UX directives are product-specific and sufficient  
+- [ ] Editing boundaries explicitly defined  
+- [ ] Prompt syntax uses clear, imperative instructions  
+
+---
+
+## STEP 7 — Bird’s-Eye Repo Review
+Do a quick top-level scan for missing pieces:
+
+- All folders contain either code or `_INSTRUCTIONS.md`  
+- `.env.example` files exist for both frontend and backend  
+- CI/CD config is present and not trivially broken  
+- Run scripts (`npm run dev`, `uvicorn …`) work end-to-end  
+- No orphan TODOs without clear ownership
+
+**Deliverables**
+- Verify all core files exist  
+- Confirm environment, CI, and scripts work end-to-end  
+
+**Checklist**
+- [ ] Every folder has code or `_INSTRUCTIONS.md`  
+- [ ] `.env.example` present for both frontend and backend  
+- [ ] CI pipeline triggers and passes basic checks  
+- [ ] Dev script (`scripts/dev.sh`) runs both FE and BE  
+
+---
+
+## STEP 8 — Finalize CLAUDE.md
+This is where Claude gets its **onboarding pack**. Make sure `CLAUDE.md` includes:
+
+- **Project Overview**: one-paragraph purpose, stack, goals, target users  
+- **Folder & File Structure**: what’s editable vs do-not-touch  
+- **Coding Conventions**: style guides, naming rules, commenting expectations  
+- **AI Collaboration Rules**: response format, edit rules, ambiguity handling  
+- **Editing Rules**: full-file vs patches, locked files  
+- **Dependencies & Setup**: frameworks, services, env vars  
+- **Workflow & Tools**: how to run locally, FE/BE boundary, deployment notes  
+- **Contextual Knowledge**: product quirks, domain rules, business logic caveats  
+- **Examples**: good vs bad AI answer
+
+**Deliverables**
+- Project overview (purpose, stack, goals, users)  
+- Folder & file structure with editable vs do-not-touch  
+- Coding conventions (style, naming, commenting)  
+- AI collaboration rules (response style, edit rules, ambiguity handling)  
+- Dependencies and setup instructions  
+- Workflow, deployment notes, contextual knowledge  
+- Good vs bad answer examples  
+- Fill out all the missing information in the CLAUDE.md file
+
+**Checklist**
+- [ ] Project overview section filled in  
+- [ ] File boundaries clearly defined  
+- [ ] Coding/style conventions included  
+- [ ] AI collaboration & editing rules written  
+- [ ] Dependencies & env notes covered  
+- [ ] Workflow & deployment info added  
+- [ ] Contextual knowledge documented  
+- [ ] Good vs bad examples included  
+- [ ] CLAUDE.md file does not miss any important information
+
+---
+
+# ✅ Outcome
+When this 8-step plan is followed:
+- The repo is a **rich, opinionated scaffold** (80% done).  
+- Docs give Claude **clear boundaries + context**.  
+- The one-page prompt is **battle-tested** and aligned.  
+- Claude Code can safely and efficiently generate the missing 20%.  
+
+
+
+
+
+
+
+
+
+
+
+
+
